@@ -3,83 +3,77 @@ import string
 import re
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk.stem import WordNetLemmatizer
 import nltk
 import os
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Download necessary NLTK resources (one-time download)
+# Download necessary NLTK resources
 nltk.download('punkt')
 nltk.download('stopwords')
 nltk.download('wordnet')
 
-
+# Function to clean text
 def clean_text_data(text):
+    """
+    This function cleans text data by converting it to lowercase,
+    removing non-alphabetic characters and spaces, and stemming or lemmatizing the words.
+    """
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", "", text)
 
-  """
-  This function cleans text data by converting it to lowercase,
-  removing non-alphabetic characters and spaces, and stemming or lemmatizing the words.
-  """
+    # Stemming reduces words to their root form (e.g., "running" becomes "run")
+    # Lemmatization reduces words to their dictionary form (e.g., "better" becomes "good")
 
-  text = text.lower()
-  text = re.sub(r"[^a-z\s]", "", text)
+    """
+    Lemmatization is a better option in this case due to the following two reasons:
 
-  # Stemming reduces words to their root form (e.g., "running" becomes "run")
-  # Lemmatization reduces words to their dictionary form (e.g., "better" becomes "good")
+    1) Fake reviews often contain nuanced language, and lemmatization can help
+    preserve the meaningful base form of words.
+    For example, "better" → "good" is crucial in some contexts, as it helps maintain the meaning.
 
-  """
-  Lemmatization is a better option in this case due to the following two reasons:
+    2) Lemmatization avoids overly reducing words to roots that might not convey meaning
+    or context correctly, making it more appropriate when trying to detect subtle patterns in the text.
+    """
+    lemmatizer = WordNetLemmatizer()
+    return " ".join([lemmatizer.lemmatize(word) for word in text.split()])
 
-  1) Fake reviews often contain nuanced language, and lemmatization can help
-  preserve the meaningful base form of words.
-  For example, "better" → "good" is crucial in some contexts, as it helps maintain the meaning.
-
-  2) Lemmatization avoids overly reducing words to roots that might not convey meaning
-  or context correctly, making it more appropriate when trying to detect subtle patterns in the text.
-  """
-
-  lemmatizer = WordNetLemmatizer()
-  return lemmatizer.lemmatize(text)
-
-
+# Function to process data
 def clean_data(file_path):
+    # Read CSV file
+    df = pd.read_csv(file_path)
+    df = df.dropna().drop_duplicates()
+    df = df[df['text_'].notnull()]
+    
+    # Clean text data
+    df['cleaned_text'] = df['text_'].apply(clean_text_data)
+    
+    # Tokenize text
+    df['tokens'] = df['cleaned_text'].apply(word_tokenize)
+    
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    df['filtered_tokens'] = df['tokens'].apply(
+        lambda tokens: [word for word in tokens if word not in stop_words]
+    )
+    
+    # Save cleaned data
+    output_directory = os.path.dirname(file_path)
+    cleaned_file_path = os.path.join(output_directory, 'cleaned_' + os.path.basename(file_path))
+    df.to_csv(cleaned_file_path, index=False)
+    print(f"Cleaned data saved to: {cleaned_file_path}")
+    return df
 
-  # Read the CSV file into a pandas DataFrame
-  df = pd.read_csv(file_path)
-
-  # Handle missing values (optional: you can impute missing values instead of dropping rows)
-  df_cleaned = df.dropna()
-
-  # Remove duplicate rows
-  df_cleaned = df_cleaned.drop_duplicates()
-
-  # Handle irrelevant entries (optional: you can keep these entries if they provide some information)
-  df_cleaned = df_cleaned[df_cleaned['text_'].notnull()]
-
-  # Create a new column to store the cleaned text
-  df_cleaned['cleaned_text'] = df_cleaned['text_'].apply(clean_text_data)
-
-  # Tokenize the text (split into words)
-  df_cleaned['tokens'] = df_cleaned['cleaned_text'].apply(word_tokenize)
-
-  # Remove stopwords (common words like "the", "a", "an", "in")
-  stop_words = set(stopwords.words('english'))
-
-  def remove_stopwords(tokens):
-    return [word for word in tokens if word not in stop_words]
-
-  df_cleaned['filtered_tokens'] = df_cleaned['tokens'].apply(remove_stopwords)
-
-  # Get the directory where the CSV file is located
-  output_directory = os.path.dirname(file_path)
-
-  # Create a filename for the cleaned data file
-  cleaned_file_path = os.path.join(output_directory, 'cleaned_' + os.path.basename(file_path))
-
-  # Save the cleaned data to a new CSV file
-  df_cleaned.to_csv(cleaned_file_path, index=False)
-  print(f"Cleaned data saved to: {cleaned_file_path}")
-
+# Function to apply TF-IDF
+def apply_tfidf(df):
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(df['cleaned_text'])
+    print("TF-IDF transformation completed.")
+    return tfidf_matrix
 
 # Example usage
 file_path = 'dataset/fakeReviewData.csv'  # Replace with the path to your CSV file
-clean_data(file_path)
+df_cleaned = clean_data(file_path)
+
+# Apply TF-IDF
+tfidf_matrix = apply_tfidf(df_cleaned)
